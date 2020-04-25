@@ -9,7 +9,7 @@ Using SuperTab plugin with `let g:SuperTabDefaultCompletionType = "<c-x><c-u>"`
 
 # features
 
-* search from the nearest line from current cursor position
+* search lines starting from the nearest position from current cursor position
 * respects `iskeyword` pattern
 * respects `ignorecase`/`smartcase` settings
 * handle completion in the middle of word
@@ -26,6 +26,6 @@ f|e
 | FileNam |
 ```
 
-When the cursor is positioned between `f` and `e`, the completions are matched
-against `FileName` and `FileTime` and the suffix `e` is removed from the
+When the cursor is positioned between `f` and `e`, the search matches
+`FileName` and `FileTime` and the suffix `e` is removed from the
 completions.

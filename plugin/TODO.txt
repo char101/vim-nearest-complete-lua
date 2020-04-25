@@ -1,9 +1,0 @@
-
-x handle word boundaries
-x escape regex
-x handle in the middle completion
-! show info
-- ignore words that equal base or base + end
-x search buffers
-  x consider position in buffers
-x handle case

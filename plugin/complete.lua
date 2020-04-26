@@ -45,20 +45,21 @@ function get_ignorecase(base, suffix)
   return false
 end
 
--- add lowercase or uppercase version to list of characters
+-- add lowercase or uppercase version to table of character bytes
 function process_ignorecase_table(chars)
   local append = {}
 
-  for k in pairs(chars) do
-    if k:match('[A-Z]') then
-      table.insert(append, k:lower())
-    elseif k:match('[a-z]') then
-      table.insert(append, k:upper())
+  for b in pairs(chars) do
+    if b >= 65 and b <= 90 then -- A-Z
+      append[b + 32] = true
+    end
+    if b >= 97 and b <= 122 then -- a-z
+      append[b - 32] = true
     end
   end
 
-  for _, v in pairs(append) do
-    chars[v] = true
+  for b in append do
+    chars[b] = true
   end
 end
 
@@ -124,7 +125,7 @@ function get_keyword_pattern(iskeyword, ignorecase)
   local chars = {}
   local n = 1
   local has_dash = false
-  for k, _ in pairs(included) do
+  for k in pairs(included) do
     if k == string.byte('-') then
       has_dash = true
     elseif not excluded[k] then

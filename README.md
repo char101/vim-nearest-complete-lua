@@ -41,7 +41,7 @@ initial search base is empty.
 When completion using '&iskeyword' does not produce any match, retry using the
 pattern from `reduce_pattern`. This pattern is applied to the initial `base`.
 
-For example, if `reduce_pattern' is set to '[a-zA-Z0-9]':
+For example, if `reduce_pattern` is set to `[a-zA-Z0-9]`:
 
 ```
 word1

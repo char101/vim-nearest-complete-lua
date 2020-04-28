@@ -335,7 +335,8 @@ function find_completions_for(base, prefix)
   if #words < g_max_results then
     local buffers = {}
     for buf in vim.eval('getbufinfo({"buflisted": 1, "bufloaded": 1})')() do
-      if buf.hidden == 0 and buf.bufnr ~= curbuf.number then
+      local buftype = vim.eval('getbufvar(' .. buf.bufnr .. ', "&buftype")')
+      if buftype == '' and buf.bufnr ~= curbuf.number then
         table.insert(buffers, buf)
       end
     end

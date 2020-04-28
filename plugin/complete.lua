@@ -43,6 +43,10 @@ end
 
 -- get ignorecase state
 function get_ignorecase(base, suffix)
+  if get_option('use_ignorecase') == 0 then
+    return false
+  end
+
   if vim.eval('&ignorecase') == 1 then
     if vim.eval('&smartcase') == 1 then
       if base ~= nil and base:match('[A-Z]') then

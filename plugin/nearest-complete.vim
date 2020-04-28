@@ -16,6 +16,8 @@ let g:nearest_complete_lua_reduce_pattern = 'a-zA-Z0-9'
 " maximum number of results produced
 let g:nearest_complete_lua_max_results = 20
 
+let g:nearest_complete_lua_use_ignorecase = 0
+
 exec 'luafile '.expand('<sfile>:p:h').'/complete.lua'
 
 func! NearestComplete(findstart, base)

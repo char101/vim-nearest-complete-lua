@@ -212,11 +212,14 @@ function find_suffix()
   local col = vim.eval('col(".")')
   local line = vim.line():sub(col)
   local suffix = line:match('^[' .. g_pattern .. ']+') -- suffix does not use fallback pattern
+  if suffix == '' then
+    suffix = nil
+  end
   return suffix
 end
 
+-- prefix = '' is OK: search using reduced pattern
 function search_line(words, seen, text, search, reverse, info, prefix, suffix)
-  print('search_line', 'prefix', prefix)
   local result = {}
   local max_result = g_max_results - #words
   if info == nil then
@@ -315,17 +318,7 @@ function search_buffer(words, seen, b, line, col, base, prefix, suffix, info)
   end
 end
 
-function find_completions_for(base, prefix)
-  if base == '' then
-    return {}
-  end
-
-  local suffix = find_suffix()
-  update_pattern(base, suffix)
-
-  local words = {}
-  local seen = {}
-
+function find_completions_for(words, seen, base, prefix, suffix)
   -- search current buffer
   local curbuf = vim.buffer()
   local curpos = vim.eval('getpos(".")')
@@ -340,7 +333,9 @@ function find_completions_for(base, prefix)
         table.insert(buffers, buf)
       end
     end
+
     table.sort(buffers, function (a, b) return a.lastused > b.lastused end)
+
     for _, buf in pairs(buffers) do
       -- buf.lnum is 0
       local name = vim.eval('fnamemodify(bufname(' .. buf.bufnr .. '), "%t")')
@@ -350,7 +345,6 @@ function find_completions_for(base, prefix)
       end
     end
   end
-  return words
 end
 
 function find_completions()
@@ -360,15 +354,54 @@ function find_completions()
     return vim.list()
   end
 
-  local words = find_completions_for(base)
-  if #words == 0 then
-    -- reduce base
+  local suffix = find_suffix()
+
+  local words = {}
+  local seen = {}
+
+  if suffix ~= nil then
+    if g_ignorecase then
+      update_pattern(base, suffix)
+    end
+
+    -- if suffix is available, first search using base + suffix
+    find_completions_for(words, seen, base, nil, suffix)
+  end
+
+  if #words < g_max_results then
+    -- search using base only
+    find_completions_for(words, seen, base)
+  end
+
+  if #words < g_max_results then
+    -- search using reduced base
     if g_reduce_pattern ~= nil then
       local rbase = base:match('[' .. g_reduce_pattern .. ']+$')
+      print('rbase', rbase, 'base', base)
       if rbase ~= nil and rbase ~= '' and rbase ~= base then
         local prefix = base:sub(1, #base - #rbase)
-        print('prefix', prefix)
-        words = find_completions_for(rbase, prefix)
+        print('rbase', rbase, 'prefix', prefix)
+
+        if suffix ~= nil then
+          -- search using reduced base (prefix + rbase, and suffix)
+          find_completions_for(words, seen, rbase, prefix, suffix)
+        end
+
+        if #words < g_max_results then
+          -- search using reduced base only (prefix + rbase)
+          find_completions_for(words, seen, rbase, prefix)
+        end
+      end
+    end
+
+    if #words < g_max_results then
+      -- search using base but with reduced pattern
+      if suffix ~= nil then
+        find_completions_for(words, seen, base, '', suffix)
+      end
+
+      if #words < g_max_results then
+        find_completions_for(words, seen, base, '')
       end
     end
   end

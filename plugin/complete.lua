@@ -19,9 +19,9 @@ local g_iskeyword = nil
 local g_ignorecase = nil
 local g_pattern = nil
 
-local g_max_results = nil
-local g_expand_pattern = nil
-local g_reduce_pattern = nil
+local opt_max_results = nil
+local opt_alt_patterns = nil
+local opt_show_line_number = nil
 
 -- byte(number) to char, escaped when necessary
 function byte_to_pattern(b)
@@ -34,11 +34,11 @@ end
 
 -- convert raw text to pattern
 function text_to_pattern(s)
-  s = s:gsub(MAGIC_CHARS_PATTERN, function(m) return '%' .. m end)
+  local p = s:gsub(MAGIC_CHARS_PATTERN, function(m) return '%' .. m end)
   if g_ignorecase then
-    s = s:gsub('[a-zA-Z]', function(m) return '[' .. m:lower() .. m:upper() .. ']' end)
+    p = s:gsub('[a-zA-Z]', function(m) return '[' .. m:lower() .. m:upper() .. ']' end)
   end
-  return s
+  return p
 end
 
 -- get ignorecase state
@@ -194,14 +194,9 @@ function find_start()
   local col = vim.eval('col(".")') - 1
   local line = vim.line():sub(1, col)
   local found = line:find('[' .. g_pattern .. ']+$')
+  -- print('\n')
+  -- print(string.format('find_start: pos=[%s] str=[%s]', found, line:sub(found)))
   if found == nil then
-    if g_expand_pattern ~= nil then
-      found = line:find('[' .. g_expand_pattern .. ']+$')
-      if found == nil then
-        return ''
-      end
-      g_pattern = g_expand_pattern
-    end
     return ''
   end
   return tostring(found - 1)
@@ -218,34 +213,45 @@ function find_suffix()
   return suffix
 end
 
--- prefix = '' is OK: search using reduced pattern
+function build_search_pattern(base, suffix, frontier)
+  local pattern = g_pattern
+  local search = (frontier == nil and ('%f[' .. pattern .. ']') or frontier) .. text_to_pattern(base) .. '[' .. pattern .. ']+'
+  if suffix ~= nil then
+    -- frontier pattern does not work here because we have reverse transition so this might match in-word
+    search = search .. text_to_pattern(suffix)
+  end
+  -- print(string.format('update_search: base=[%s] suffix=[%s] search=[%s]', base, suffix, search))
+  return search
+end
+
 function search_line(words, seen, text, search, reverse, info, prefix, suffix)
   local result = {}
-  local max_result = g_max_results - #words
+  local max_result = opt_max_results - #words
   if info == nil then
     info = ''
   end
 
-  local p = '%f[' .. (prefix == nil and g_pattern or g_reduce_pattern) .. ']' .. text_to_pattern(search) .. '[' .. g_pattern .. ']+'
-  local sl = 0
+  -- pad with space so that the search below matches words that are at the beginning and end of the line
+  text = ' ' .. text .. ' '
+
+  local sidx = nil
   if suffix ~= nil then
-    p = p .. text_to_pattern(suffix) .. '%f[^' .. g_pattern .. ']'
-    sl = #suffix + 1
+    sidx = -#suffix - 1
   end
 
-  text = ' ' .. text .. ' ' -- lua frontier pattern does not work when the match is at the start or end of the line
+  -- print(string.format('search_line: text=[%s] search=[%s] prefix=[%s] suffix=[%s]', text, search, prefix, suffix))
 
   local n = 0
   local menu = info
-  for word in text:gmatch(p) do
+  for word in text:gmatch(search) do
     if seen[word] == nil and n < max_result then
       n = n + 1
       seen[word] = true
 
       -- remove suffix from word
-      if sl > 0 then
-        word = word:sub(1, -sl)
-        menu = suffix .. ' ' .. menu
+      if sidx ~= nil then
+        word = word:sub(1, sidx)
+        menu = (menu == '') and suffix or (suffix .. ' ' .. menu)
       end
 
       -- prepend prefix to word
@@ -253,6 +259,7 @@ function search_line(words, seen, text, search, reverse, info, prefix, suffix)
         word = prefix .. word
       end
 
+      -- print(string.format('search_line: (match) word=[%s] menu=[%s]', word, menu))
       result[n] = vim.dict({
         word = word,
         menu = menu
@@ -276,38 +283,50 @@ function search_line(words, seen, text, search, reverse, info, prefix, suffix)
   end
 end
 
--- words: table of found words
--- seen: table to check for previously found words
--- b: vim.buffer
--- line: starting line
--- col: starting col
--- base: search string
-function search_buffer(words, seen, b, line, col, base, prefix, suffix, info)
-  local num_lines = #b
+function search_buffer(words, seen, buffer, line, col, search, base, prefix, suffix, file)
+  local num_lines = #buffer
   local up = line
   local down = line
+  local show_line_number = opt_show_line_number
   while up >= 1 or down <= num_lines do
     if up >= 1 then
-      text = b[up]
+      text = buffer[up]
       if up == line then
         text = text:sub(1, col - base:len())
       end
       if trim(text) ~= '' then
-        search_line(words, seen, text, base, true, info == nil and ':' .. (up - line) or info .. ':' .. up, prefix, suffix)
-        if #words >= g_max_results then
+        -- print(string.format('search_buffer: (up) text=[%s] col=[%s] base=[%s]', text, col, base))
+        local info = nil
+        if file ~= nil then
+          info = file .. ':' .. up
+        elseif show_line_number then
+          info = ':' .. (up - line)
+        end
+        search_line(words, seen, text, search, true, info, prefix, suffix)
+        if #words >= opt_max_results then
           break
         end
       end
     end
 
     if down <= num_lines then
-      text = b[down]
+      text = buffer[down]
       if down == line then
-        text = text:sub(col + 1)
+        text = text:sub(col)
+        if suffix ~= nil then
+          text = text:sub(#suffix + 1)
+        end
       end
       if trim(text) ~= '' then
-        search_line(words, seen, text, base, false, info == nil and ':' .. (down - line) or info .. ':' .. down, prefix, suffix)
-        if #words >= g_max_results then
+        -- print(string.format('search_buffer: (down) text=[%s] col=[%s] base=[%s]', text, col, base))
+        local info = nil
+        if file ~= nil then
+          info = file .. ':' .. down
+        elseif show_line_number then
+          info = ':' .. (down - line)
+        end
+        search_line(words, seen, text, search, false, info, prefix, suffix)
+        if #words >= opt_max_results then
           break
         end
       end
@@ -318,19 +337,22 @@ function search_buffer(words, seen, b, line, col, base, prefix, suffix, info)
   end
 end
 
-function find_completions_for(words, seen, base, prefix, suffix)
+function find_completions_for(words, seen, search, base, prefix, suffix)
   -- search current buffer
   local curbuf = vim.buffer()
   local curpos = vim.eval('getpos(".")')
-  search_buffer(words, seen, curbuf, curpos[1], curpos[2], base, prefix, suffix)
+  -- print(string.format('find_completions_for: search=[%s] base=[%s] prefix=[%s] suffix=[%s]', search, base, prefix, suffix))
+  search_buffer(words, seen, curbuf, curpos[1], curpos[2], search, base, prefix, suffix)
 
   -- search other buffers
-  if #words < g_max_results then
+  if #words < opt_max_results then
     local buffers = {}
+    local n = 1
     for buf in vim.eval('getbufinfo({"buflisted": 1, "bufloaded": 1})')() do
       local buftype = vim.eval('getbufvar(' .. buf.bufnr .. ', "&buftype")')
       if buftype == '' and buf.bufnr ~= curbuf.number then
-        table.insert(buffers, buf)
+        buffers[n] = buf
+        n = n + 1
       end
     end
 
@@ -338,9 +360,12 @@ function find_completions_for(words, seen, base, prefix, suffix)
 
     for _, buf in pairs(buffers) do
       -- buf.lnum is 0
-      local name = vim.eval('fnamemodify(bufname(' .. buf.bufnr .. '), "%t")')
-      search_buffer(words, seen, vim.buffer(buf.bufnr), buf.lnum == 0 and 1 or buf.lnum, 1, base, prefix, suffix, name)
-      if #words >= g_max_results then
+      local file = vim.eval('fnamemodify(bufname(' .. buf.bufnr .. '), "%t")')
+      if file == '' then
+        file = '[No Name #' .. buf.bufnr .. ']'
+      end
+      search_buffer(words, seen, vim.buffer(buf.bufnr), buf.lnum == 0 and 1 or buf.lnum, 1, search, base, prefix, suffix, file)
+      if #words >= opt_max_results then
         break
       end
     end
@@ -364,50 +389,49 @@ function find_completions()
       update_pattern(base, suffix)
     end
 
-    -- if suffix is available, first search using base + suffix
-    find_completions_for(words, seen, base, nil, suffix)
+    -- search with base and suffix
+    find_completions_for(words, seen, build_search_pattern(base, suffix), base, nil, suffix)
   end
 
-  if #words < g_max_results then
-    -- search using base only
-    find_completions_for(words, seen, base)
+  if #words < opt_max_results then
+    -- search with base (ignoring suffix if exists)
+    find_completions_for(words, seen, build_search_pattern(base), base)
   end
 
-  if #words < g_max_results then
-    -- search using reduced base
-    if g_reduce_pattern ~= nil then
-      local rbase = base:match('[' .. g_reduce_pattern .. ']+$')
-      print('rbase', rbase, 'base', base)
-      if rbase ~= nil and rbase ~= '' and rbase ~= base then
-        local prefix = base:sub(1, #base - #rbase)
-        print('rbase', rbase, 'prefix', prefix)
+  if #words < opt_max_results then
+    -- search using alternative patterns
+    if #opt_alt_patterns > 0 then
+      local alt_base = nil
+      for fp in opt_alt_patterns() do
+        local frontier = fp[0]
+        local pattern = fp[1]
+        alt_base = base:match(pattern .. '$')
+        if alt_base ~= nil and alt_base ~= '' then
+          local prefix = base:sub(1, #base - #alt_base)
 
-        if suffix ~= nil then
-          -- search using reduced base (prefix + rbase, and suffix)
-          find_completions_for(words, seen, rbase, prefix, suffix)
+          -- print(string.format('find_completions: (alt pattern) base=[%s] altbase=[%s] prefix=[%s] pat=[%s] frontier=[%s]', base, alt_base, prefix, pattern, frontier))
+
+          if suffix ~= nil then
+            -- search using alt pattern + suffix
+            find_completions_for(words, seen, build_search_pattern(alt_base, suffix, frontier), base, prefix, suffix)
+            if #words >= opt_max_results then
+              break
+            end
+          end
+
+          -- search using alt pattern only
+          find_completions_for(words, seen, build_search_pattern(alt_base, nil, frontier), base, prefix)
+          if #words >= opt_max_results then
+            break
+          end
         end
-
-        if #words < g_max_results then
-          -- search using reduced base only (prefix + rbase)
-          find_completions_for(words, seen, rbase, prefix)
-        end
-      end
-    end
-
-    if #words < g_max_results then
-      -- search using base but with reduced pattern
-      if suffix ~= nil then
-        find_completions_for(words, seen, base, '', suffix)
-      end
-
-      if #words < g_max_results then
-        find_completions_for(words, seen, base, '')
       end
     end
   end
 
   return vim.list(words)
 end
+
 
 function update_pattern(base, suffix)
   local iskeyword = vim.eval('&iskeyword')
@@ -420,9 +444,9 @@ function update_pattern(base, suffix)
 end
 
 function update_options()
-  g_max_results = get_option('max_results')
-  g_expand_pattern = get_option('expand_pattern')
-  g_reduce_pattern = get_option('reduce_pattern')
+  opt_max_results = get_option('max_results')
+  opt_alt_patterns = get_option('alt_patterns')
+  opt_show_line_number = get_option('show_line_number')
 end
 
 function get_option(name)

@@ -14,8 +14,7 @@ Using SuperTab plugin with `let g:SuperTabDefaultCompletionType = "<c-x><c-u>"`
 * respects `ignorecase`/`smartcase` settings
 * handle completion in the middle of word
 * also search all buffers in addition to current buffer
-* expand search
-* reduce search
+* alternative patterns
 
 # in-word completion
 
@@ -30,16 +29,11 @@ f|e
 -----------
 ```
 
-# expand\_search
+# alternative patterns
 
-When completion using '&iskeyword' does not produce any match, retry using the
-pattern from `expand_pattern`. This pattern creates a new search base if the
-initial search base is empty.
-
-# reduce\_search
-
-When completion using '&iskeyword' does not produce any match, retry using the
-pattern from `reduce_pattern`. This pattern is applied to the initial `base`.
+When completion using `&iskeyword` does not produce any match, uses patterns in
+`g:nearest_complete_lua_alt_patterns` to search for a more specific base from
+previous base.
 
 For example, if `reduce_pattern` is set to `[a-zA-Z0-9]`:
 
@@ -63,8 +57,11 @@ disable_f|
 |disable_flag1|
 |disable_flag2|
 ---------------
-```
 
-When the cursor is positioned between `f` and `e`, the search matches
-`FileName` and `FileTime` and the suffix `e` is removed from the
-completions.
+HelloWorld
+
+HolaW
+-----------
+|HolaWorld|
+-----------
+```

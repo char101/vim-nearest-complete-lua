@@ -3,20 +3,16 @@ if exists('g:loaded_nearest_complete_lua')
 endif
 let g:loaded_nearest_complete_lua = 1
 
-" pattern to use when the search using &iskeyword does not product any matches
-" if find_start does not get a match, then it will use this pattern
-" the pattern should only consists of characters that will fit inside '[]'
-" let g:nearest_complete_lua_expand_pattern = '%S'
-
-" pattern to use when the search using &iskeyword does not produce any matches
-" if find_completions does not find a match, then it will use this pattern to reduce the base string and retry
-" the pattern should only consists of characters that will fit inside '[]'
-let g:nearest_complete_lua_reduce_pattern = 'a-zA-Z0-9'
+" Alternative patterns that will be used against the search base. Useful for in-word completion.
+" A pattern consists of a frontier pattern and a matching pattern. The frontier pattern is used to prevent in-word match.
+let g:nearest_complete_lua_alt_patterns = [['%f[a-zA-Z0-9]', '[a-zA-Z0-9]+'], ['%f[A-Z]', '[A-Z]+[a-z0-9]*']]
 
 " maximum number of results produced
 let g:nearest_complete_lua_max_results = 20
 
 let g:nearest_complete_lua_use_ignorecase = 0
+
+le g:nearest_complete_lua_show_line_number = 0
 
 exec 'luafile '.expand('<sfile>:p:h').'/complete.lua'
 
